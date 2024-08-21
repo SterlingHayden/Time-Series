@@ -1,0 +1,76 @@
+---
+title: "HW-00"
+author: "Sterling Hayden"
+date: "2024-08-21"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+The usairlines data set contains monthly passenger information for the united states for the years 1990 to 2008.  Make this data set into a tsibble.  Some helpful codes:
+1. Pull data into R and (call it air to use code below)
+2. Use following code to create tsibble: 
+```{r}
+library(tidyverse)
+air <- read.csv("https://raw.githubusercontent.com/sjsimmo2/TimeSeries/master/usairlines.csv")
+head(air)
+```
+
+```{r}
+library(tsibble)
+air.ts<-air %>% mutate(date=mdy(paste(Month, "1",Year))) %>% 
+mutate(Month.ts = yearmonth(date)) %>% 
+as_tsibble(index = Month.ts)
+
+head(air.ts)
+```
+
+
+
+How many implicit missing values are in this data set?
+```{r}
+count_gaps(air.ts)
+```
+
+
+What is the lowest value you see on the y-axis (actual number value on the graph....using the tick-marks on y-axis)? 
+Looking at the plot created in the last question, the series appears to be trending upward.?
+```{r}
+library(fable)
+autoplot(air.ts, Passengers)
+```
+```{r}
+min(air.ts$Passengers)
+```
+
+
+
+We will now switch over to an energy data set. Read in the data set energy_F2024.csv.  We will be using the date information contained in the datetime_beginning_ept and the mw (megawatt) variable.
+```{r}
+eng <- read.csv("https://raw.githubusercontent.com/sjsimmo2/TimeSeries/master/energy_F2024.csv")
+head(eng)
+```
+Using the energy data set, aggregate the data to be daily mw totals.  What is the largest daily mw total (rounded to the nearest mw....no decimal places)?
+```{r}
+eng.ts <- eng %>%
+  # Convert to datetime and extract date
+  mutate(date_utc = mdy_hm(datetime_beginning_utc),
+         date_only = date(date_utc)) %>%
+  group_by(date_only) %>%
+  summarise(daily_mw_total = sum(mw)) %>%
+  as_tsibble(index = date_only)
+
+
+eng.ts
+```
+
+```{r}
+max(eng.ts$daily_mw_total)
+```
+
+How many implicit gaps are there?
+```{r}
+count_gaps(eng.ts)
+```
