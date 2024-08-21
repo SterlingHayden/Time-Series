@@ -56,7 +56,7 @@ Using the energy data set, aggregate the data to be daily mw totals.  What is th
 ```{r}
 eng.ts <- eng %>%
   # Convert to datetime and extract date
-  mutate(date_utc = mdy_hm(datetime_beginning_utc),
+  mutate(date_utc = mdy_hm(datetime_beginning_ept),
          date_only = date(date_utc)) %>%
   group_by(date_only) %>%
   summarise(daily_mw_total = sum(mw)) %>%
