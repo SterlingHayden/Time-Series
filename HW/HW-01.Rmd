@@ -1,0 +1,103 @@
+---
+title: "HW-01"
+author: "Sterling Hayden"
+date: "2024-08-27"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(readr)
+library(fpp3)
+library(fable)
+library(fabletools)
+library(lubridate)
+library(expsmooth)
+library(lmtest)
+library(zoo)
+library(seasonal)
+library(ggplot2)
+library(seasonalview)
+library(aTSA)
+library(tsibble)
+library(fable)
+library(tidyverse)
+```
+
+```{r}
+eng <- read.csv("https://raw.githubusercontent.com/sjsimmo2/TimeSeries/master/energy_F2024.csv")
+head(eng)
+```
+
+```{r}
+eng_daily <- eng %>%
+  mutate(date = as_date(mdy_hm(datetime_beginning_ept))) %>%
+  group_by(date) %>%
+  summarise(total_daily_usage = sum(mw, na.rm = TRUE))
+
+head(eng_daily)
+```
+```{r}
+eng_daily <- eng_daily %>% 
+  mutate(monthly = (format(as.Date(date), "%m-%Y")))
+eng_daily
+
+eng_monthly <- eng_daily %>% 
+  group_by(monthly) %>% 
+  summarise(avg_monthly_usage = mean(total_daily_usage))
+eng_monthly
+
+eng_monthly <- eng_monthly %>% 
+  mutate(mon = my(monthly))
+eng_monthly
+
+eng_monthly <- eng_monthly %>%
+  mutate(mony = as.yearmon(mon))
+eng_monthly
+```
+
+
+split up into train, val, and test
+Training should be from August 2018 - July 2022, validation should be from August 2022 - July 2023 and test should be from August 2023 - July 2024
+```{r}
+train <- eng_monthly %>%
+  filter(between(mon, as.Date('2018-08-01'), as.Date('2022-07-31')))
+
+val <- eng_monthly %>%
+  filter(between(mon, as.Date('2022-08-01'), as.Date('2023-07-31')))
+
+test <- eng_monthly %>%
+  filter(between(mon, as.Date('2023-08-01'), as.Date('2024-07-31')))
+```
+
+
+Using the total daily average by month in the training data set, what is the median value? 
+```{r}
+median(train$avg_monthly_usage)
+```
+
+Decompose your training data by using the STL decomposition assuming there is a monthly seasonality.
+```{r}
+train$mony <- yearmonth(train$mony)
+train.ts <- train %>% 
+  select(mony, avg_monthly_usage) %>% 
+  as_tsibble(index = mony)
+```
+
+```{r}
+dcmp <- train.ts |>
+  model(stl = STL(avg_monthly_usage))
+components(dcmp)
+
+components(dcmp) |> autoplot() + theme_classic()
+```
+
+
+
+
+
+
+
