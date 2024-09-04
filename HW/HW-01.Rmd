@@ -109,6 +109,6 @@ train.ts |>
   features(avg_monthly_usage, feat_stl)
 ```
 F_t = strength of the trend = 0.3680337  
-F_s = strength of seasonality = 0.9141054.
+F_s = strength of seasonality = 0.9141054
 "A series with seasonal strength F_s close to 0 exhibits almost no seasonality, while a series with strong seasonality will have F_s close to 1" same can be said about trend.
 
