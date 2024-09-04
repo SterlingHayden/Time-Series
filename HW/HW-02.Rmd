@@ -1,0 +1,119 @@
+---
+title: "HW-02"
+author: "Sterling Hayden"
+date: "2024-09-04"
+output: html_document
+---
+PJM is a regional transmission organization (RTO) that provides resources for the market of
+wholesale electricity in all or parts of 13 states and the District of Columbia (source: PJM.com).
+PJM, henceforth referred to as the client, would like to contract your services in understanding
+metered load Megawatts for the AEP Appalachian Power transmission zone
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(readr)
+library(fpp3)
+library(fable)
+library(fabletools)
+library(lubridate)
+library(expsmooth)
+library(lmtest)
+library(zoo)
+library(seasonal)
+library(ggplot2)
+library(seasonalview)
+library(aTSA)
+library(tsibble)
+library(fable)
+library(tidyverse)
+```
+
+# Creating tsible data
+For this analysis,the client would like the data to be rolled up to total daily MW and averaged by month
+```{r}
+eng <- read.csv("https://raw.githubusercontent.com/sjsimmo2/TimeSeries/master/energy_F2024.csv")
+
+eng_daily <- eng %>%
+  mutate(date = as_date(mdy_hm(datetime_beginning_ept))) %>%
+  group_by(date) %>%
+  summarise(total_daily_usage = sum(mw, na.rm = TRUE))
+
+eng_daily <- eng_daily %>% 
+  mutate(monthly = (format(as.Date(date), "%m-%Y")))
+
+eng_monthly <- eng_daily %>% 
+  group_by(monthly) %>% 
+  summarise(avg_monthly_usage = mean(total_daily_usage))
+
+eng_monthly <- eng_monthly %>% 
+  mutate(mon = my(monthly))
+
+eng_monthly <- eng_monthly %>%
+  mutate(mony = as.yearmon(mon))
+```
+
+The training data should be from August 2018-July 2022; the validation data set should be from
+August 2022-July 2023; and the test data should be from August 2023-July 2024.
+```{r}
+train <- eng_monthly %>%
+  filter(between(mon, as.Date('2018-08-01'), as.Date('2022-07-31')))
+train$mony <- yearmonth(train$mony)
+train.ts <- train %>% 
+  select(mony, avg_monthly_usage) %>% 
+  as_tsibble(index = mony)
+
+val <- eng_monthly %>%
+  filter(between(mon, as.Date('2022-08-01'), as.Date('2023-07-31')))
+val$mony <- yearmonth(val$mony)
+val.ts <- val %>% 
+  select(mony, avg_monthly_usage) %>% 
+  as_tsibble(index = mony)
+
+test <- eng_monthly %>%
+  filter(between(mon, as.Date('2023-08-01'), as.Date('2024-07-31')))
+test$mony <- yearmonth(val$mony)
+test.ts <- test %>% 
+  select(mony, avg_monthly_usage) %>% 
+  as_tsibble(index = mony)
+```
+
+
+# Creation of the best ESM model
+Create a simple exp smoothing, Holt exp smoothing, and a Holt-Winters exp smoothing model
+
+first lets take a look at the ts plot
+```{r}
+autoplot(train.ts, avg_monthly_usage) +
+  xlab("Date by Month") +
+  ylab("Mean Total Daily MW") +
+  ggtitle("Mean Total Daily MW by Month From August 2018 - July 2022")
+```
+To me this is pretty clearly an additive model.
+
+## Simple exponential smoothing
+```{r}
+# train the model
+fit <- train.ts |>
+  model(ETS(avg_monthly_usage ~ error("A") + trend("N") + season("N")))
+
+# forecast the model
+fc <- fit |> fabletools::forecast(h = 12)
+
+# plot the forecasted data
+fc |> autoplot(bind_rows(train.ts, val.ts)) + 
+  geom_line(aes(y = .fitted), col="#D55E00", data = augment(fit)) +
+  labs(y="Mean Total Daily MW", title="Simple Exponential Smoothing Forecast")
+```
+
+
+Now lets look how well we forcasted for just the validation set
+```{r}
+autoplot(fc) +
+  autolayer(val.ts, avg_monthly_usage, color = "blue")
+```
+
+
+
+
+
+
+
