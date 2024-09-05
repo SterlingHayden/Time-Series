@@ -96,7 +96,7 @@ fit <- train.ts |>
   model(ETS(avg_monthly_usage ~ error("A") + trend("N") + season("N")))
 
 # forecast the model
-fc <- fit |> fabletools::forecast(h = 12)
+fc <- fit |> fabletools::forecast(h = nrow(val.ts))
 
 # plot the forecasted data
 fc |> autoplot(bind_rows(train.ts, val.ts)) + 
@@ -110,6 +110,96 @@ Now lets look how well we forcasted for just the validation set
 autoplot(fc) +
   autolayer(val.ts, avg_monthly_usage, color = "blue")
 ```
+
+
+## Holt’s linear trend method
+
+```{r}
+# train the model
+fit.H <- train.ts |>
+  model(ETS(avg_monthly_usage ~ error("A") + trend("A") + season("N")))
+
+# forecast the model
+fc.H <- fit.H |> fabletools::forecast(h = nrow(val.ts))
+
+autoplot(fc.H) +
+  autolayer(val.ts, avg_monthly_usage, color = "blue")
+```
+
+
+## Damped Holt's method
+```{r}
+# train the model
+fit.Hd <- train.ts |>
+  model(ETS(avg_monthly_usage ~ error("A") + trend("Ad", phi = 0.9) + season("N")))
+
+# forecast the model
+fc.Hd <- fit.Hd |> fabletools::forecast(h = nrow(val.ts))
+
+autoplot(fc.Hd) +
+  autolayer(val.ts, avg_monthly_usage, color = "blue")
+```
+
+```{r}
+train.ts |>
+  model(
+    `Holt's method` = ETS(avg_monthly_usage ~ error("A") +
+                       trend("A") + season("N")),
+    `Damped Holt's method` = ETS(avg_monthly_usage ~ error("A") +
+                       trend("Ad", phi = 0.9) + season("N"))
+  ) |>
+  fabletools::forecast(h = nrow(val.ts)) |>
+  autoplot(train.ts, level = NULL) +
+  labs(title = "Australian population",
+       y = "Millions") +
+  guides(colour = guide_legend(title = "Forecast"))
+```
+
+
+## Holt-Winters’ method
+
+```{r}
+# train the model
+fit.HWa <- train.ts |>
+  model(ETS(avg_monthly_usage ~ error("A") + trend("A") + season("A")))
+
+# forecast the model
+fc.HWa <- fit.HWa |> fabletools::forecast(h = nrow(val.ts))
+
+autoplot(fc.HWa) +
+  autolayer(val.ts, avg_monthly_usage, color = "blue")
+```
+
+
+```{r}
+# train the model
+fit.HWm <- train.ts |>
+  model(ETS(avg_monthly_usage ~ error("M") + trend("A") + season("M")))
+
+# forecast the model
+fc.HWm <- fit.HWm |> fabletools::forecast(h = nrow(val.ts))
+
+autoplot(fc.HWm) +
+  autolayer(val.ts, avg_monthly_usage, color = "blue")
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
