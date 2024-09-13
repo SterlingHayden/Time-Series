@@ -214,14 +214,17 @@ autoplot(fc.HWm) +
 fit <- train.ts |>
   model(
     `Holt-Winters' Additive` = ETS(avg_monthly_usage ~ error("A") + trend("A") + season("A")),
-    `Holt-Winters' Multiplicative` = ETS(avg_monthly_usage ~ error("M") + trend("A") + season("M"))
+    `Holt-Winters' Multiplicative` = ETS(avg_monthly_usage ~ error("M") + trend("A")+season("M")),
+    `Damped Linear` = ETS(avg_monthly_usage ~ error("A") + trend("Ad") + season("N")),
+    `Linear` = ETS(avg_monthly_usage ~ error("A") + trend("A") + season("N")),
+    `SES` = ETS(avg_monthly_usage ~ error("A") + trend("N") + season("N"))
   )
 
 fc <- fit |> fabletools::forecast(h = nrow(val.ts))
 
-autoplot(fc, val.ts, level = NULL) +                               # Plot the forecast for val.ts
-  autolayer(val.ts, avg_monthly_usage, color = "black") +  # Actual validation data
-  labs(title = "Holt-Winters' Additive & Multiplicative Forecasts",
+autoplot(fc, val.ts, level = NULL) + # Plot the forecast for val.ts
+  autolayer(val.ts, avg_monthly_usage, color = "black", size = 1.1) +  # Actual validation data
+  labs(title = "All Forecasts Plotted Against The Validation Data",
        y = "Mean Total Daily MW") +
   guides(colour = guide_legend(title = "Model Type")) 
 ```
@@ -238,7 +241,8 @@ mw_fit <- train.ts |>
     `Linear` = ETS(avg_monthly_usage ~ error("A") + trend("A") + season("N")),
     `Damped Linear` = ETS(avg_monthly_usage ~ error("A") + trend("Ad") + season("N")),
     HWAdd = ETS(avg_monthly_usage ~ error("A") + trend("A") + season("A")),
-    HWMult = ETS(avg_monthly_usage ~ error("M") + trend("A") + season("M"))
+    HWMult = ETS(avg_monthly_usage ~ error("M") + trend("A") + season("M")),
+    HWMultdamp = ETS(avg_monthly_usage ~ error("M") + trend("Ad") + season("M"))
   )
 
 # fc with above models
