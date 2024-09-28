@@ -86,6 +86,7 @@ test.ts <- test %>%
 
 Note: I tried the log and sqrt transformation to fix this issue but those didn't work.
 ```{r}
+ggAcf(train.ts$avg_monthly_usage,lag=10)
 ggAcf(train.ts$avg_monthly_usage,lag=25)
 ```
 We see seasonality in our spikes. We will have to do something about this.  
@@ -113,6 +114,55 @@ ggAcf(difference(train.ts$avg_monthly_usage),lag=25)
 ggPacf(difference(train.ts$avg_monthly_usage),lag=25)
 ```
 The plots do not look any better.  I'm pretty sure the data just needs to be seasonaly differenced to fix the issue we are seeing. 
+
+
+
+# Creation of top 2 ARIMA models 3,4
+PJM would like nonseasonal ARIMA models
+```{r}
+# fit the following ARIMA's
+mw_fit <- train.ts |>
+  model(ARIMA2.0.2 = ARIMA(avg_monthly_usage ~ pdq(2,0,2) + PDQ(0,0,0) + 0),
+        ARIMA2.0.2c = ARIMA(avg_monthly_usage ~ pdq(2,0,2) + PDQ(0,0,0) + 1),
+        ARIMA2.0.3 = ARIMA(avg_monthly_usage ~ pdq(2,0,3) + PDQ(0,0,0) + 0),
+        ARIMA2.0.3c = ARIMA(avg_monthly_usage ~ pdq(2,0,3) + PDQ(0,0,0) + 1),
+        ARIMA3.0.2 = ARIMA(avg_monthly_usage ~ pdq(3,0,2) + PDQ(0,0,0)),
+        ARIMA4.0.2 = ARIMA(avg_monthly_usage ~ pdq(4,0,2) + PDQ(0,0,0)),
+        ARIMA3.0.3 = ARIMA(avg_monthly_usage ~ pdq(3,0,3) + PDQ(0,0,0)),
+        ARIMA4.0.3 = ARIMA(avg_monthly_usage ~ pdq(4,0,3) + PDQ(0,0,0)),
+        stepwise = ARIMA(avg_monthly_usage ~ pdq() + PDQ(0,0,0)),
+        search = ARIMA(avg_monthly_usage ~ pdq() + PDQ(0,0,0), stepwise=FALSE))
+
+
+# show the ARIMA models selected
+print(mw_fit)
+
+# show the model eval metrics for each ARIMA
+glance(mw_fit) |> arrange(AICc) |> select(.model:BIC)
+
+```
+
+Plot of forecasted versus actual data in the validation data
+```{r}
+fit <- train.ts |>
+  model(
+    `ARIMA(2,0,2) w/ mean` = ARIMA(avg_monthly_usage ~ pdq(2,0,2) + PDQ(0,0,0) + 1),
+    'ARIMA(4,0,2) w/ mean' = ARIMA(avg_monthly_usage ~ pdq(4,0,2) + PDQ(0,0,0) + 1)
+  )
+
+fc <- fit |> fabletools::forecast(h = nrow(val.ts))
+
+autoplot(fc, val.ts, level = NULL) + # Plot the forecast for val.ts
+  autolayer(val.ts, avg_monthly_usage, color = "black", size = 1.1) +  # Actual validation data
+  labs(title = "ARIMA(2,0,2) w/ mean & ARIMA(4,0,2) w/ mean Against The Validation Data",
+       y = "Mean Total Daily MW") +
+  guides(colour = guide_legend(title = "ARIMA Model")) 
+```
+
+```{r}
+
+```
+
 
 
 
