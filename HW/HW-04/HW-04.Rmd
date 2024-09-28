@@ -1,0 +1,99 @@
+---
+title: "HW-04"
+author: "Sterling Hayden"
+date: "2024-09-28"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(readr)
+library(fpp3)
+library(fable)
+library(fabletools)
+library(lubridate)
+library(expsmooth)
+library(lmtest)
+library(zoo)
+library(seasonal)
+library(ggplot2)
+library(seasonalview)
+library(aTSA)
+library(tsibble)
+library(fable)
+library(tidyverse)
+library(imputeTS)
+```
+
+
+# Creating tsible data
+
+```{r}
+#read in the csv
+train <- read.csv('hrl_load_metered.csv')
+
+#convert to a tsibble
+train$datetime_beginning_ept <- as.POSIXct(train$datetime_beginning_ept,
+                                              format = "%m/%d/%y %H:%M",
+                                              tz = "America/New_York")
+
+head(train)
+```
+
+We have to account for multiple 2:00am’s in the spring. Lets deal with those duplicates
+```{r}
+#remove duplicates by grouping then calculating the average then ungrouping
+train <- train %>%
+  group_by(datetime_beginning_ept) %>%
+  summarise(
+    mw = mean(mw, na.rm = TRUE), #calculate the mean mw for each datetime_beginning_ept
+    .groups = 'drop' #ungroup the data
+  )
+```
+
+We now can convert it to a tsibble.
+```{r}
+train.ts <- train.ts %>% 
+  select(datetime_beginning_ept, mw) %>% 
+  as_tsibble(index = datetime_beginning_ept)
+
+head(train.ts)
+```
+
+We also have to account for the lost 2:00am's in the fall.
+```{r}
+#impute the missing data with the average between the t-1 and t+1
+train.ts <- train.ts %>%
+  na_interpolation(option = "spline")
+```
+CAN SOMEONE MAKE SURE THAT THIS IS CORRECT
+
+
+# Looking into the time series
+```{r}
+autoplot(train.ts, mw)
+```
+
+
+
+
+
+# Build an appropriate Exponential Smoothing Model. 
+Forecast this model for your validation set only. 
+Calculate the MAE and MAPE for the validation set. 
+
+
+
+
+# Build a seasonal ARIMA model. 
+Describe the approach you used to select the lags of the model.  
+Forecast this model for your validation set only. 
+Calculate the MAE and MAPE for the validation set. 
+
+
+
+
+
+
+
+
