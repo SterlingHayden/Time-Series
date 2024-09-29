@@ -27,17 +27,21 @@ library(imputeTS)
 
 
 # Creating tsible data
-
 ```{r}
 #read in the csv
 train <- read.csv('hrl_load_metered.csv')
+test <- read.csv('hrl_load_metered-test1.csv')
 
 #convert to a tsibble
 train$datetime_beginning_ept <- as.POSIXct(train$datetime_beginning_ept,
                                               format = "%m/%d/%y %H:%M",
                                               tz = "America/New_York")
+test$datetime_beginning_ept <- as.POSIXct(test$datetime_beginning_ept,
+                                              format = "%m/%d/%y %H:%M",
+                                              tz = "America/New_York")
 
-head(train)
+nrow(train)
+nrow(test)
 ```
 
 We have to account for multiple 2:00am’s in the spring. Lets deal with those duplicates
@@ -49,11 +53,22 @@ train <- train %>%
     mw = mean(mw, na.rm = TRUE), #calculate the mean mw for each datetime_beginning_ept
     .groups = 'drop' #ungroup the data
   )
+
+test <- test %>%
+  group_by(datetime_beginning_ept) %>%
+  summarise(
+    mw = mean(mw, na.rm = TRUE),
+    .groups = 'drop'
+  )
 ```
 
 We now can convert it to a tsibble.
 ```{r}
-train.ts <- train.ts %>% 
+train.ts <- train %>% 
+  select(datetime_beginning_ept, mw) %>% 
+  as_tsibble(index = datetime_beginning_ept)
+
+test.ts <- test %>% 
   select(datetime_beginning_ept, mw) %>% 
   as_tsibble(index = datetime_beginning_ept)
 
@@ -62,11 +77,16 @@ head(train.ts)
 
 We also have to account for the lost 2:00am's in the fall.
 ```{r}
-#impute the missing data with the average between the t-1 and t+1
+#fill the missing time gaps with NA's
+train.ts <- tsibble::fill_gaps(train.ts)
+test.ts <- tsibble::fill_gaps(test.ts)
+
+#impute the NA's with the average between the t-1 and t+1
 train.ts <- train.ts %>%
   na_interpolation(option = "spline")
+test.ts <- test.ts %>%
+  na_interpolation(option = "spline")
 ```
-CAN SOMEONE MAKE SURE THAT THIS IS CORRECT
 
 
 # Looking into the time series
@@ -75,21 +95,55 @@ autoplot(train.ts, mw)
 ```
 
 
-
-
-
 # Build an appropriate Exponential Smoothing Model. 
 Forecast this model for your validation set only. 
 Calculate the MAE and MAPE for the validation set. 
+```{r}
+#create all the different models
+mw_fit <- train.ts |>
+  model(
+    `SES` = ETS(mw ~ error("A") + trend("N") + season("N")),
+    `Linear` = ETS(mw ~ error("A") + trend("A") + season("N")),
+    `Damped Linear` = ETS(mw ~ error("A") + trend("Ad") + season("N")),
+    `Holt-Winters Additive` = ETS(mw ~ error("A") + trend("A") + season("A")),
+    `Holt-Winters' Multiplicative` = ETS(mw ~ error("M") + trend("A") + season("M")),
+    `Holt-Winters' Multiplicative Damped` = ETS(mw ~ error("M") + trend("Ad") + season("M"))
+  )
 
+#fc with above models
+mw_fc <- mw_fit |>
+  fabletools::forecast(h = nrow(test.ts))
 
+#see how well the different models did on the train + val data
+fabletools::accuracy(mw_fc, bind_rows(train.ts, test.ts))
+
+```
+Holt-Winters' Multiplicative has the lowest MAPE and MAE.
+
+```{r}
+autoplot(mw_fc, test.ts, level = NULL) + # Plot the forecast for val.ts
+  autolayer(test.ts, mw, color = "black", size = 1.1) +  # Actual validation data
+  labs(title = "All Forecasts Plotted Against The Test Data",
+       y = "Hourly MW") +
+  guides(colour = guide_legend(title = "Model Type")) 
+```
+This makes sense why our linear models are so bad.
 
 
 # Build a seasonal ARIMA model. 
 Describe the approach you used to select the lags of the model.  
 Forecast this model for your validation set only. 
 Calculate the MAE and MAPE for the validation set. 
-
+```{r}
+ggAcf(train.ts$mw,lag=25)
+ggPacf(train.ts$mw,lag=25)
+```
+I there are some clear issues here. Lets try and fix it with a transformation.
+```{r}
+ggAcf(log(train.ts$mw),lag=25)
+ggPacf(log(train.ts$mw),lag=25)
+```
+That didn't work. Lets now try to do differences.
 
 
 
