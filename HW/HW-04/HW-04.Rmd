@@ -30,15 +30,23 @@ library(imputeTS)
 ```{r}
 #read in the csv
 train <- read.csv('hrl_load_metered.csv')
-test <- read.csv('hrl_load_metered-test1.csv')
+test1 <- read.csv('hrl_load_metered-test1.csv')
+test2 <- read.csv('hrl_load_metered-test2.csv')
 
 #convert to a tsibble
 train$datetime_beginning_ept <- as.POSIXct(train$datetime_beginning_ept,
                                               format = "%m/%d/%y %H:%M",
                                               tz = "America/New_York")
+#previous weeks testing data
+test1$datetime_beginning_ept <- as.POSIXct(test$datetime_beginning_ept,
+                                              format = "%m/%d/%y %H:%M",
+                                              tz = "America/New_York")
+#newer testing data
 test$datetime_beginning_ept <- as.POSIXct(test$datetime_beginning_ept,
                                               format = "%m/%d/%y %H:%M",
                                               tz = "America/New_York")
+#join the train and test1
+train <- rbind(train,test1)
 
 nrow(train)
 nrow(test)
@@ -100,23 +108,25 @@ Forecast this model for your validation set only.
 Calculate the MAE and MAPE for the validation set. 
 ```{r}
 #create all the different models
-mw_fit <- train.ts |>
+mw_fit_ETS <- train.ts |>
   model(
     `SES` = ETS(mw ~ error("A") + trend("N") + season("N")),
     `Linear` = ETS(mw ~ error("A") + trend("A") + season("N")),
     `Damped Linear` = ETS(mw ~ error("A") + trend("Ad") + season("N")),
     `Holt-Winters Additive` = ETS(mw ~ error("A") + trend("A") + season("A")),
     `Holt-Winters' Multiplicative` = ETS(mw ~ error("M") + trend("A") + season("M")),
-    `Holt-Winters' Multiplicative Damped` = ETS(mw ~ error("M") + trend("Ad") + season("M"))
+    `Holt-Winters' Multiplicative Damped` = ETS(mw ~ error("M") + trend("Ad") + season("M")),
+    `Additive Trend Multiplicative Seasonality` = ETS(mw ~ error("A") + trend("A") + season("M")),
+    `Multiplicative Error Additive Trend & Seasonality` = ETS(mw ~ error("M") + trend("A") + season("A"))
+
   )
 
 #fc with above models
-mw_fc <- mw_fit |>
+mw_fc_ets <- mw_fit_ETS |>
   fabletools::forecast(h = nrow(test.ts))
 
 #see how well the different models did on the train + val data
-fabletools::accuracy(mw_fc, bind_rows(train.ts, test.ts))
-
+fabletools::accuracy(mw_fc_ets, bind_rows(train.ts, test.ts))
 ```
 Holt-Winters' Multiplicative has the lowest MAPE and MAE.
 
@@ -134,19 +144,119 @@ This makes sense why our linear models are so bad.
 Describe the approach you used to select the lags of the model.  
 Forecast this model for your validation set only. 
 Calculate the MAE and MAPE for the validation set. 
+
+## PACF and ACF Plots
 ```{r}
 ggAcf(train.ts$mw,lag=25)
 ggPacf(train.ts$mw,lag=25)
 ```
-I there are some clear issues here. Lets try and fix it with a transformation.
+I there are some clear issues here. Lets try and fix it with some differences. 
+
 ```{r}
-ggAcf(log(train.ts$mw),lag=25)
-ggPacf(log(train.ts$mw),lag=25)
+#non-seasonal differences
+train.ts %>%
+ features(mw, unitroot_ndiffs)
 ```
-That didn't work. Lets now try to do differences.
+We should take 1 non-seasonal difference. What about seasonal differences?
+
+```{r}
+#seasonal differences
+train.ts %>%
+ features(mw, unitroot_nsdiffs)
+```
+We should take 1 seasonal difference.
+
+
+## Seasonal differences
+If we set stepwise=FALSE and approximation=FALSE, we make R work extra hard to find the best ARIMA model. This takes much longer, but with only one series to model, the extra time taken is not a problem.
+```{r}
+#fit the following ARIMA model (only need to model one if we set stepwise = FALSE, approx = FALSE)
+mw_fit_arima <- train.ts |>
+  model(auto = ARIMA(mw))#, stepwise = FALSE, approx = FALSE))
+
+
+#show the ARIMA models selected
+print(mw_fit_arima)
+
+#show the model eval metrics for each ARIMA
+glance(mw_fit_arima) |> arrange(AICc) |> select(.model:BIC)
+```
+ARIMA(2,0,2)(2,1,0)[24]
+
+
+## Seasonal Dummy Variables
+```{r}
+#create the hour dummy variable
+train_dummy.ts <- train.ts %>%
+  mutate(hour = hour(datetime_beginning_ept))
+test_dummy.ts <- test.ts %>% 
+  mutate(hour = hour(datetime_beginning_ept))
+head(train.ts)
+
+
+#create the model
+model_SD_ARIMA <- train_dummy.ts %>%
+ model(ARIMA(mw ~ factor(hour) + PDQ(0,0,0)))
+
+#show the report
+report(model_SD_ARIMA)
+```
 
 
 
+## Fourier Transforms
+```{r}
+model_F_ARIMA <- train.ts %>% 
+  model(
+  `K = 1` = ARIMA(mw ~ fourier(K=1) + PDQ(0,0,0)),
+  `K = 2` = ARIMA(mw ~ fourier(K=2) + PDQ(0,0,0)),
+  `K = 3` = ARIMA(mw ~ fourier(K=3) + PDQ(0,0,0)),
+  `K = 4` = ARIMA(mw ~ fourier(K=4) + PDQ(0,0,0)),
+  `K = 5` = ARIMA(mw ~ fourier(K=5) + PDQ(0,0,0)),
+  `K = 6` = ARIMA(mw ~ fourier(K=6) + PDQ(0,0,0)),
+  `K = 7` = ARIMA(mw ~ fourier(K=7) + PDQ(0,0,0)),
+  `K = 8` = ARIMA(mw ~ fourier(K=8) + PDQ(0,0,0)),
+  `K = 9` = ARIMA(mw ~ fourier(K=9) + PDQ(0,0,0)),
+  `K = 10` = ARIMA(mw ~ fourier(K=10) + PDQ(0,0,0)),
+  `K = 11` = ARIMA(mw ~ fourier(K=11) + PDQ(0,0,0)),
+  `K = 12` = ARIMA(mw ~ fourier(K=12) + PDQ(0,0,0)),
+)
+
+glance(model_F_ARIMA)
+```
+K=10 has the lowest AICc
+
+
+# Model Comparisons 
+
+```{r}
+mw_fit_all <- train.ts |>
+  model(
+    Holt_Winters_Multiplicative = ETS(mw ~ error("M") + trend("A") + season("M")),
+    Fourier_K10 = ARIMA(mw ~ fourier(K=12) + PDQ(0,0,0)),
+    Seasonal_ARIMA = ARIMA(mw ~ pdq(2,0,2) + PDQ(2,1,0)),
+    #Seasonal_Dummy_Variables = ARIMA(mw ~ factor(hour) + PDQ(0,0,0))
+  )
+
+#fc with above models
+mw_fc_all <- mw_fit_all |>
+  fabletools::forecast(h = nrow(test.ts))
+
+#see how well the different models did on the train + val data
+fabletools::accuracy(mw_fc_all, test.ts)
+```
+
+```{r}
+modelF <- train.ts %>%
+  model(
+    `K = 10` = ARIMA(mw ~ fourier(K = 10))
+  )
+# FORECAST FOR FOURIER
+train_fcF <- modelF |>
+  fabletools::forecast(h = len(test.ts))
+# ACCURACY
+fabletools::accuracy(train_fcF, test.ts)
+```
 
 
 
