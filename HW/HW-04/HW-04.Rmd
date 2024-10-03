@@ -38,18 +38,22 @@ train$datetime_beginning_ept <- as.POSIXct(train$datetime_beginning_ept,
                                               format = "%m/%d/%y %H:%M",
                                               tz = "America/New_York")
 #previous weeks testing data
-test1$datetime_beginning_ept <- as.POSIXct(test$datetime_beginning_ept,
+test1$datetime_beginning_ept <- as.POSIXct(test1$datetime_beginning_ept,
                                               format = "%m/%d/%y %H:%M",
                                               tz = "America/New_York")
 #newer testing data
-test$datetime_beginning_ept <- as.POSIXct(test$datetime_beginning_ept,
+test2$datetime_beginning_ept <- as.POSIXct(test2$datetime_beginning_ept,
                                               format = "%m/%d/%y %H:%M",
                                               tz = "America/New_York")
+test <- test2
 #join the train and test1
 train <- rbind(train,test1)
 
 nrow(train)
 nrow(test)
+
+tail(train)
+head(test)
 ```
 
 We have to account for multiple 2:00am’s in the spring. Lets deal with those duplicates
@@ -125,8 +129,10 @@ mw_fit_ETS <- train.ts |>
 mw_fc_ets <- mw_fit_ETS |>
   fabletools::forecast(h = nrow(test.ts))
 
-#see how well the different models did on the train + val data
-fabletools::accuracy(mw_fc_ets, bind_rows(train.ts, test.ts))
+#see how well the different models did on the val data
+fabletools::accuracy(mw_fc_ets, test.ts)
+
+glance(mw_fc_ets) |> arrange(AICc) |> select(.model:BIC)
 ```
 Holt-Winters' Multiplicative has the lowest MAPE and MAE.
 
@@ -171,41 +177,31 @@ We should take 1 seasonal difference.
 If we set stepwise=FALSE and approximation=FALSE, we make R work extra hard to find the best ARIMA model. This takes much longer, but with only one series to model, the extra time taken is not a problem.
 ```{r}
 #fit the following ARIMA model (only need to model one if we set stepwise = FALSE, approx = FALSE)
-mw_fit_arima <- train.ts |>
+mw_fit_sarima <- train.ts |>
   model(auto = ARIMA(mw))#, stepwise = FALSE, approx = FALSE))
 
 
 #show the ARIMA models selected
 print(mw_fit_arima)
 
-#show the model eval metrics for each ARIMA
+#show the model eval metrics for SARIMA
 glance(mw_fit_arima) |> arrange(AICc) |> select(.model:BIC)
 ```
 ARIMA(2,0,2)(2,1,0)[24]
 
-
-## Seasonal Dummy Variables
 ```{r}
-#create the hour dummy variable
-train_dummy.ts <- train.ts %>%
-  mutate(hour = hour(datetime_beginning_ept))
-test_dummy.ts <- test.ts %>% 
-  mutate(hour = hour(datetime_beginning_ept))
-head(train.ts)
+#forcast the SARIMA
+fc_sarima <- mw_fit_sarima |> fabletools::forecast(h = nrow(test.ts))
 
-
-#create the model
-model_SD_ARIMA <- train_dummy.ts %>%
- model(ARIMA(mw ~ factor(hour) + PDQ(0,0,0)))
-
-#show the report
-report(model_SD_ARIMA)
+#how did it preform
+fabletools::accuracy(fc_sarima, test.ts)
 ```
 
 
 
 ## Fourier Transforms
 ```{r}
+#NOTE: We are allowed to do PDQ(D=0), I did PDQ(0,0,0) to save on compute time
 model_F_ARIMA <- train.ts %>% 
   model(
   `K = 1` = ARIMA(mw ~ fourier(K=1) + PDQ(0,0,0)),
@@ -222,42 +218,54 @@ model_F_ARIMA <- train.ts %>%
   `K = 12` = ARIMA(mw ~ fourier(K=12) + PDQ(0,0,0)),
 )
 
-glance(model_F_ARIMA)
+glance(model_F_ARIMA) |> arrange(AICc) |> select(.model:BIC)
 ```
 K=10 has the lowest AICc
 
-
-# Model Comparisons 
-
+Now lets forecast with k=10
 ```{r}
-mw_fit_all <- train.ts |>
+#NOTE: We are allowed to do PDQ(D=0), I did PDQ(0,0,0) to save on compute time
+model_fourier <- train.ts %>%
   model(
-    Holt_Winters_Multiplicative = ETS(mw ~ error("M") + trend("A") + season("M")),
-    Fourier_K10 = ARIMA(mw ~ fourier(K=12) + PDQ(0,0,0)),
-    Seasonal_ARIMA = ARIMA(mw ~ pdq(2,0,2) + PDQ(2,1,0)),
-    #Seasonal_Dummy_Variables = ARIMA(mw ~ factor(hour) + PDQ(0,0,0))
+    `K = 10` = ARIMA(mw ~ fourier(K = 10) + PDQ(0,0,0))
   )
-
-#fc with above models
-mw_fc_all <- mw_fit_all |>
+#forecast the FOURIER
+fc_fourier <- model_fourier |>
   fabletools::forecast(h = nrow(test.ts))
-
-#see how well the different models did on the train + val data
-fabletools::accuracy(mw_fc_all, test.ts)
+#how did it preform
+fabletools::accuracy(fc_fourier, test.ts)
 ```
 
+
+## Seasonal Dummy Variables
 ```{r}
-modelF <- train.ts %>%
-  model(
-    `K = 10` = ARIMA(mw ~ fourier(K = 10))
-  )
-# FORECAST FOR FOURIER
-train_fcF <- modelF |>
-  fabletools::forecast(h = len(test.ts))
-# ACCURACY
-fabletools::accuracy(train_fcF, test.ts)
+#create the hour dummy variable
+train_dummy.ts <- train.ts %>%
+   mutate(hour = factor(hour(datetime_beginning_ept)))
+head(train.ts)
+
+
+#create the model
+#NOTE: We are allowed to do PDQ(D=0), I did PDQ(0,0,0) to save on compute time
+model_SD_ARIMA <- train_dummy.ts %>%
+ model(ARIMA(mw ~ factor(hour) + PDQ(0,0,0)))
+
+#show the report
+report(model_SD_ARIMA)
 ```
 
 
+Lets forecast with this model
+```{r}
+#align test data with training data
+test_dummy.ts <- test.ts %>% 
+  mutate(hour = factor(hour(datetime_beginning_ept)))
 
 
+
+#forecast the model
+fc_DV <- model_SD_ARIMA |>
+  fabletools::forecast(new_data = test_dummy.ts) #you have to do new_data= for dummy varriable models
+#how did it preform
+fabletools::accuracy(fc_DV, test_dummy.ts)
+```
