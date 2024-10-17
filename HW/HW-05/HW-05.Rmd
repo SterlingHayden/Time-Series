@@ -1,0 +1,144 @@
+---
+title: "HW-05"
+author: "Sterling Hayden"
+date: "2024-10-17"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(readr)
+library(fpp3)
+library(fable)
+library(fabletools)
+library(lubridate)
+library(expsmooth)
+library(lmtest)
+library(zoo)
+library(seasonal)
+library(ggplot2)
+library(seasonalview)
+library(aTSA)
+library(tsibble)
+library(fable)
+library(tidyverse)
+library(imputeTS)
+library(fable.prophet)
+
+```
+
+
+# Load data
+```{r}
+#read in the csv
+train <- read.csv('../HW-04/hrl_load_metered.csv')
+test1 <- read.csv('../HW-04/hrl_load_metered-test1.csv')
+test2 <- read.csv('../HW-04/hrl_load_metered-test2.csv')
+test3 <- read.csv('hrl_load_metered-test3.csv')
+test4 <- read.csv('hrl_load_metered-test4.csv')
+
+#format
+train$datetime_beginning_ept <- as.POSIXct(train$datetime_beginning_ept,
+                                              format = "%m/%d/%y %H:%M",
+                                              tz = "America/New_York")
+test1$datetime_beginning_ept <- as.POSIXct(test1$datetime_beginning_ept,
+                                              format = "%m/%d/%y %H:%M",
+                                              tz = "America/New_York")
+test2$datetime_beginning_ept <- as.POSIXct(test2$datetime_beginning_ept,
+                                              format = "%m/%d/%y %H:%M",
+                                              tz = "America/New_York")
+test3$datetime_beginning_ept <- as.POSIXct(test3$datetime_beginning_ept,
+                                              format = "%m/%d/%y %H:%M",
+                                              tz = "America/New_York")
+test4$datetime_beginning_ept <- as.POSIXct(test4$datetime_beginning_ept,
+                                              format = "%m/%d/%y %H:%M",
+                                              tz = "America/New_York")
+
+#newest test keep as test
+test <- test4
+#join the train and test1
+train <- rbind(train,test1,test2,test3)
+
+nrow(train)
+nrow(test)
+
+tail(train)
+head(test)
+```
+
+
+# Data Preprocessing and Creating a Tsible object
+```{r}
+#remove duplicates by grouping then calculating the average then ungrouping
+train <- train %>%
+  group_by(datetime_beginning_ept) %>%
+  summarise(
+    mw = mean(mw, na.rm = TRUE), #calculate the mean mw for each datetime_beginning_ept
+    .groups = 'drop' #ungroup the data
+  )
+test <- test %>%
+  group_by(datetime_beginning_ept) %>%
+  summarise(
+    mw = mean(mw, na.rm = TRUE),
+    .groups = 'drop'
+  )
+
+#convert to tsible
+train.ts <- train %>% 
+  select(datetime_beginning_ept, mw) %>% 
+  as_tsibble(index = datetime_beginning_ept)
+test.ts <- test %>% 
+  select(datetime_beginning_ept, mw) %>% 
+  as_tsibble(index = datetime_beginning_ept)
+
+#account for missing data
+#fill the missing time gaps with NA's
+train.ts <- tsibble::fill_gaps(train.ts)
+test.ts <- tsibble::fill_gaps(test.ts)
+#impute the NA's with the average between the t-1 and t+1
+train.ts <- train.ts %>%
+  na_interpolation(option = "spline")
+test.ts <- test.ts %>%
+  na_interpolation(option = "spline")
+```
+
+
+# Prophet Model
+
+```{r}
+#A higher order allows the seasonal component to capture more complex and non-linear seasonal patterns in the data.
+fit_prophet <- train.ts |>
+  model(
+    prophet(mw ~
+            season(period = "day", order = 5) +
+            season(period = "week", order = 3) +
+            season(period = "year", order = 5))
+  )
+
+fit_prophet |>
+  components() |>
+  autoplot()
+```
+
+
+```{r}
+fc_prophet <- fit_prophet |>
+  fabletools::forecast(new_data = test.ts)
+
+autoplot(fc_prophet, level = NULL) +
+  autolayer(test.ts, mw, color = "black") +
+  labs(y="MW Usage", x="Hour & Date", title="Prophet Model")
+```
+
+```{r}
+fabletools::accuracy(fc_prophet, test.ts)
+```
+
+
+
+# Neural Network Model
+
+```{r}
+
+```
+
