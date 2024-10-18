@@ -104,7 +104,8 @@ test.ts <- test.ts %>%
 
 
 # Prophet Model
-
+- Forecast this model for your validation set only. 
+- Calculate the MAE and MAPE for the validation set. 
 ```{r}
 #A higher order allows the seasonal component to capture more complex and non-linear seasonal patterns in the data.
 fit_prophet <- train.ts |>
@@ -127,7 +128,7 @@ fc_prophet <- fit_prophet |>
 
 autoplot(fc_prophet, level = NULL) +
   autolayer(test.ts, mw, color = "black") +
-  labs(y="MW Usage", x="Hour & Date", title="Prophet Model")
+  labs(y="MW Usage", x="Date (Hourly Format)", title="Prophet Model")
 ```
 
 ```{r}
@@ -137,8 +138,71 @@ fabletools::accuracy(fc_prophet, test.ts)
 
 
 # Neural Network Model
+- Describe the approach you used to select the lags of the model.  
+- Forecast this model for your validation set only. 
+- Calculate the MAE and MAPE for the validation set. 
+
+
+Should we difference?
+```{r}
+gg_tsdisplay(train.ts[1:15000,])
+```
+Seems like we should difference
 
 ```{r}
+train.ts %>% 
+  features(mw, unitroot_nsdiffs)
 
+train.ts %>% 
+  features(difference(mw, 24), unitroot_nsdiffs)
+```
+1 seasonal difference does the trick.
+
+```{r}
+ggPacf(difference(train.ts$mw, 24),lag.max = 100)
+```
+p=2, P=3or4
+The PACF shows a significant spike at Lag 2, which indicates that the first lag is a strong predictor of the current observation.
+There is also a significant spike at Lag 48 and 72 and (3rd and 4th seasonal lag), suggesting that the value from 24 periods (hours) ago also significantly influences the current observation.
+
+
+```{r}
+train.ts_diff <- train.ts %>%
+  mutate(diff_mw = difference(mw, 24))
+
+set.seed(8)
+model_nnet <- train.ts_diff %>%
+  model(hand1 = NNETAR(diff_mw ~ AR(p = 1, P = 1)))
+
+# check output of models
+model_nnet %>%
+  select(hand1) %>%
+  report()
 ```
 
+
+```{r}
+model_nnet_for <- forecast::forecast(model_nnet, test.ts)
+
+nnet_for_hand1 <- rep(NA, 24) # empty vector
+
+# add the forecasted differences to the previous season's value (hand model)
+# for hourly: 24: needed to add difference based on previous predicted values
+for(i in 1:24){
+  nnet_for_hand1[i] <- train.ts$mw[length(train.ts$mw) - 24  + i] + model_nnet_for$.mean[i]
+}
+
+# manually calculate values 
+NN_error_hand1 <- test.ts$mw - nnet_for_hand1
+NN_MAE_hand1 <- mean(abs(NN_error_hand1))
+NN_MAPE_hand1 <- mean(abs(NN_error_hand1)/abs(test.ts$mw))*100
+NN_MAE_hand1
+NN_MAPE_hand1
+```
+
+
+```{r}
+autoplot(fc_nn, level = NULL) +
+  autolayer(test.ts, mw, color = "black") +
+  labs(y="MW Usage", x="Date (Hourly Format)", title="Neural Network Model")
+```
