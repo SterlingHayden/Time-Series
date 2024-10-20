@@ -135,6 +135,34 @@ autoplot(fc_prophet, level = NULL) +
 fabletools::accuracy(fc_prophet, test.ts)
 ```
 
+```{r}
+library(scales)
+graphDF <- data.frame(
+  forecast = fc_prophet,
+  actual = test.ts$mw,
+  time = test.ts$datetime_beginning_ept
+)
+
+P_MAPE_hand=5.70
+plot <- ggplot(data = graphDF, aes(x = time)) + 
+geom_line(aes(y = forecast..mean, color = "Prophet \nForecast"), linewidth = 1.2, alpha =.7) + 
+geom_line(aes(y = actual,color = "Observed"),linetype = "twodash",linewidth = 1.5) + 
+scale_color_manual(values = c("Observed" = "black", "Prophet \nForecast" = "orange")) + 
+scale_y_continuous(labels = comma) + 
+labs(colour = "",
+     title = paste0("Forecasted MW Usage for ","Prophet Model",""),
+     subtitle = paste0("09/13/2024- 09/19/2024\n","MAPE: ",P_MAPE_hand,"\n"),
+     y ="Hourly\nMW",
+     x = "") + 
+theme_classic() + 
+theme(axis.title.y = element_text(angle = 0,vjust = .5))
+
+print(plot)
+```
+
+```{r}
+head(graphDF)
+```
 
 
 # Neural Network Model
@@ -172,7 +200,7 @@ train.ts_diff <- train.ts %>%
 
 set.seed(8)
 model_nnet <- train.ts_diff %>%
-  model(hand1 = NNETAR(diff_mw ~ AR(p = 2, P = 3), n_nodes = 5))
+  model(hand1 = NNETAR(diff_mw ~ AR(p = 2, P = 4), n_nodes = 5))
 
 # check output of models
 model_nnet %>%
@@ -180,8 +208,10 @@ model_nnet %>%
   report()
 ```
 ```{r}
-load("model.RData")
-#model_nnet_for <- forecast::forecast(model_nnet, test.ts)
+#load("model.RData")
+model_nnet_for <- forecast::forecast(model_nnet, test.ts)
+save(model_nnet_for, file = "model.RData")
+
 ```
 
 ```{r}
@@ -200,6 +230,7 @@ NN_MAE_hand1 <- mean(abs(NN_error_hand1))
 NN_MAPE_hand1 <- mean(abs(NN_error_hand1)/abs(test.ts$mw))*100
 NN_MAE_hand1
 NN_MAPE_hand1
+
 ```
 
 ```{r}
@@ -213,13 +244,23 @@ for(i in 1:168){
 NN_error_hand <- test$mw - nnet_for_hand
 NN_MAE_hand <- mean(abs(NN_error_hand))
 NN_MAPE_hand <- mean(abs(NN_error_hand)/abs(test$mw))*100
-
-
-# fc on test
-ggplot(test.ts, aes(x = datetime_beginning_ept)) +
-  geom_line(aes(y = mw, color = "Actual"), show.legend = TRUE, size = 1.0) +
-  geom_line(aes(y = nnet_for_hand, color = "Predicted"), show.legend = TRUE, size = 1.0) +
-  labs(y = "Hourly Megawatt (MW)", x = "Date", title = "Actual versus Forecast Values for Neural Network Model", color = NULL)
 ```
 
 
+
+```{r}
+NN_MAPE_handuse = 3.39
+plot <- ggplot(data = test.ts, aes(x = datetime_beginning_ept)) + 
+geom_line(aes(y = nnet_for_hand, color = "Neural Network \nForecast"), linewidth = 1.2,alpha =.7) +
+geom_line(aes(y = mw,color = "Observed"),linetype = "twodash",linewidth = 1.5) + 
+scale_color_manual(values = c("Observed" = "black", "Neural Network \nForecast" = "orange")) + 
+labs(colour = "",
+     title = paste0("Forecasted MW Usage for ","Neural Network Model",""),
+     subtitle = paste0("09/13/2024- 09/19/2024\n","MAPE: ",NN_MAPE_handuse,"\n"),
+     y ="Hourly\nMW",
+     x = "") + 
+theme_classic() + 
+theme(axis.title.y = element_text(angle = 0,vjust = .5))
+
+print(plot)
+```
