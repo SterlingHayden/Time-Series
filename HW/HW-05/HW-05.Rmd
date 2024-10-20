@@ -181,12 +181,11 @@ model_nnet %>%
 ```
 ```{r}
 load("model.RData")
-
+#model_nnet_for <- forecast::forecast(model_nnet, test.ts)
 ```
 
 ```{r}
-model_nnet_for <- forecast::forecast(model_nnet, test.ts)
-
+#THIS FOR DAY
 nnet_for_hand1 <- rep(NA, 24) # empty vector
 
 # add the forecasted differences to the previous season's value (hand model)
@@ -203,9 +202,24 @@ NN_MAE_hand1
 NN_MAPE_hand1
 ```
 
-
 ```{r}
-autoplot(model_nnet_for, level = NULL) +
-  autolayer(test.ts, mw, color = "black") +
-  labs(y="MW Usage", x="Date (Hourly Format)", title="Neural Network Model")
+#THIS FOR WEEK
+nnet_for_hand <- rep(NA, 168)
+
+for(i in 1:168){
+  nnet_for_hand[i] <- train$mw[length(train$mw) - 168 + i] + 
+    model_nnet_for$.mean[i]}
+
+NN_error_hand <- test$mw - nnet_for_hand
+NN_MAE_hand <- mean(abs(NN_error_hand))
+NN_MAPE_hand <- mean(abs(NN_error_hand)/abs(test$mw))*100
+
+
+# fc on test
+ggplot(test.ts, aes(x = datetime_beginning_ept)) +
+  geom_line(aes(y = mw, color = "Actual"), show.legend = TRUE, size = 1.0) +
+  geom_line(aes(y = nnet_for_hand, color = "Predicted"), show.legend = TRUE, size = 1.0) +
+  labs(y = "Hourly Megawatt (MW)", x = "Date", title = "Actual versus Forecast Values for Neural Network Model", color = NULL)
 ```
+
+
