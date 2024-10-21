@@ -200,18 +200,22 @@ train.ts_diff <- train.ts %>%
 
 set.seed(8)
 model_nnet <- train.ts_diff %>%
-  model(hand1 = NNETAR(diff_mw ~ AR(p = 2, P = 4), n_nodes = 5))
+  model(
+    hand1 = NNETAR(diff_mw ~ AR(p = 2, P = 4), n_nodes = 5),
+    auto = NNETAR(diff_mw, n_nodes=7)
+)
 
 # check output of models
 model_nnet %>%
-  select(hand1) %>%
+  select(auto) %>%
   report()
 ```
+
+
 ```{r}
-#load("model.RData")
+load("model.RData")
 model_nnet_for <- forecast::forecast(model_nnet, test.ts)
 save(model_nnet_for, file = "model.RData")
-
 ```
 
 ```{r}
@@ -244,9 +248,24 @@ for(i in 1:168){
 NN_error_hand <- test$mw - nnet_for_hand
 NN_MAE_hand <- mean(abs(NN_error_hand))
 NN_MAPE_hand <- mean(abs(NN_error_hand)/abs(test$mw))*100
+NN_MAE_hand
+NN_MAPE_hand
 ```
 
+```{r}
+#for AUTO week
+nnet_for_auto <- rep(NA, 168)
 
+for(i in 1:168){
+  nnet_for_auto[i] <- train$mw[length(train$mw) - 168 + i] + 
+    model_nnet_for$.mean[i+168]}
+
+NN_error_auto <- test$mw - nnet_for_auto
+NN_MAE_auto <- mean(abs(NN_error_auto))
+NN_MAPE_auto <- mean(abs(NN_error_auto)/abs(test$mw))*100
+NN_MAE_auto
+NN_MAPE_auto
+```
 
 ```{r}
 NN_MAPE_handuse = 3.39
